@@ -1,10 +1,11 @@
 {
   "name": "orders-service",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Voltix - órdenes de compra",
+  "main": "src/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
   },
   "keywords": [],
   "author": "",
@@ -13,14 +14,15 @@
   "dependencies": {
     "dotenv": "^18.0.10",
     "express": "^5.3.0",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.12.1",
-    "swagger-jsdoc": "^6.3.0",
+    "mongoose": "^9.12.2",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
-  }
+  },
+  "private": true
 }
