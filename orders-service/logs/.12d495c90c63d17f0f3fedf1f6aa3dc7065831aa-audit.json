@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "C:\\Users\\Carolina\\Documents\\codigos\\Voltix\\orders-service\\logs\\.12d495c90c63d17f0f3fedf1f6aa3dc7065831aa-audit.json",
+    "files": [
+        {
+            "date": 1794953985494,
+            "name": "C:\\Users\\Carolina\\Documents\\codigos\\Voltix\\orders-service\\logs\\app-2026-11-17.log",
+            "hash": "49e796564297083c5240184083335c8ef2db44210ff609b078ad64d0caea897a"
+        }
+    ],
+    "hashType": "sha256"
+}
