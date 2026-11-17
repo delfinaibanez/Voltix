@@ -3,8 +3,9 @@ node_modules/
 .env.*
 !.env.example
 *.log
-logs/*
-!logs/.gitkeep
+*.log.gz
+*-audit.json
+**/logs/
 certs/*
 !certs/.gitkeep
 *.pem
