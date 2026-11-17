@@ -1,11 +1,13 @@
 {
   "name": "orders-service",
   "version": "1.0.0",
-  "description": "Voltix - órdenes de compra",
+  "description": "",
   "main": "src/server.js",
   "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "seed": "node src/seed.js"
   },
   "keywords": [],
   "author": "",
@@ -24,5 +26,5 @@
   "devDependencies": {
     "nodemon": "^3.1.14"
   },
-  "private": true
+  "private": "true"
 }

@@ -4,8 +4,9 @@ node_modules/
 !.env.example
 !.env.docker.example
 *.log
-logs/*
-!logs/.gitkeep
+*.log.gz
+*-audit.json
+**/logs/
 certs/*
 !certs/.gitkeep
 *.pem
