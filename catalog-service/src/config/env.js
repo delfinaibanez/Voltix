@@ -8,6 +8,16 @@ const toInt = (value, fallback) => {
   return Number.isNaN(parsed) ? fallback : parsed;
 };
 
+// El secreto JWT es configuración del entorno: nunca va en el código ni en Git.
+// Tiene que ser el MISMO que usa auth-service para firmar. Si falta, no arranca.
+const jwtSecret = process.env.JWT_SECRET || '';
+if (jwtSecret.length < 32 || /^cambiar/i.test(jwtSecret)) {
+  throw new Error(
+    'JWT_SECRET es obligatorio: debe tener al menos 32 caracteres, ser el mismo que el de ' +
+      'auth-service y no puede ser el valor de ejemplo (ver .env.example)',
+  );
+}
+
 const config = {
   serviceName: process.env.SERVICE_NAME || 'catalog-service',
   env: process.env.NODE_ENV || 'development',
@@ -25,6 +35,13 @@ const config = {
     uri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/catalog_db',
     retryMs: toInt(process.env.MONGO_RETRY_MS, 3000),
     maxRetries: toInt(process.env.MONGO_MAX_RETRIES, 10),
+  },
+
+  // HS256 con el MISMO secreto que auth-service; el token se valida localmente.
+  jwt: {
+    secret: jwtSecret,
+    algorithm: 'HS256',
+    issuer: process.env.JWT_ISSUER || 'voltix-auth-service',
   },
 
   log: {

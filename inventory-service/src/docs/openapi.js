@@ -29,13 +29,13 @@ const badRequest = (message, details) =>
 const unauthorized = errorResponse('Falta el token Bearer o es inválido / está vencido', {
   status: 401,
   error: 'Unauthorized',
-  message: 'Token ausente o inválido',
+  message: 'Falta el token de acceso (Authorization: Bearer <token>)',
 });
 
 const forbidden = errorResponse('El token es válido pero el rol no alcanza (se requiere ADMIN)', {
   status: 403,
   error: 'Forbidden',
-  message: 'No tenés permisos para esta operación',
+  message: 'No tenés permisos para realizar esta operación',
 });
 
 const notFoundStock = errorResponse('No hay stock registrado para ese producto', {
@@ -131,13 +131,15 @@ module.exports = {
     '/api/stock/{productId}': {
       get: {
         tags: ['Stock'],
-        summary: 'Consultar el stock de un producto',
+        summary: 'Consultar el stock de un producto (USER o ADMIN)',
+        security: [{ bearerAuth: [] }],
         parameters: [productIdParam],
         responses: {
           200: stockResponse('Stock del producto'),
           400: badRequest('El productId no tiene un formato válido', [
             { field: 'productId', message: 'Debe ser un ObjectId de 24 caracteres hexadecimales' },
           ]),
+          401: unauthorized,
           404: notFoundStock,
           500: internalError,
         },
@@ -174,7 +176,7 @@ module.exports = {
     '/api/stock/{productId}/reserve': {
       post: {
         tags: ['Reservas'],
-        summary: 'Reservar stock para una orden',
+        summary: 'Reservar stock para una orden (USER o ADMIN)',
         description:
           'Descuenta "quantity" de available y lo suma a reserved. Idempotente por (orderId, productId): ' +
           'repetir la misma reserva devuelve 200 con la reserva existente sin descontar de nuevo.',
@@ -214,7 +216,7 @@ module.exports = {
     '/api/stock/{productId}/release': {
       post: {
         tags: ['Reservas'],
-        summary: 'Liberar la reserva de una orden',
+        summary: 'Liberar la reserva de una orden (USER o ADMIN)',
         description:
           'Devuelve las unidades reservadas a available. Idempotente: liberar una reserva ya liberada responde 200 sin devolver stock otra vez.',
         security: [{ bearerAuth: [] }],
@@ -251,7 +253,7 @@ module.exports = {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
-        description: 'JWT emitido por auth-service (HS256, issuer voltix-auth-service)',
+        description: 'JWT emitido por auth-service (HS256, issuer voltix-auth-service). Todas las rutas /api/stock lo requieren; orders-service reenvía el token del usuario.',
       },
     },
     schemas: {

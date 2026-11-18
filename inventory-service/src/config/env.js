@@ -10,6 +10,16 @@ const toInt = (value, fallback) => {
 
 const stripSlash = (url) => (url ? url.replace(/\/+$/, '') : url);
 
+// El secreto JWT es configuración del entorno: nunca va en el código ni en Git.
+// Tiene que ser el MISMO que usa auth-service para firmar.
+const jwtSecret = process.env.JWT_SECRET || '';
+if (jwtSecret.length < 32 || /^cambiar/i.test(jwtSecret)) {
+  throw new Error(
+    'JWT_SECRET es obligatorio: debe tener al menos 32 caracteres, ser el mismo que el de ' +
+      'auth-service y no puede ser el valor de ejemplo (ver .env.example)',
+  );
+}
+
 const config = {
   serviceName: process.env.SERVICE_NAME || 'inventory-service',
   env: process.env.NODE_ENV || 'development',
@@ -53,6 +63,12 @@ const config = {
   // Retardo artificial dentro de la sección crítica, para hacer visible la
   // condición de carrera. En uso normal debe quedar en 0.
   demoDelayMs: toInt(process.env.DEMO_DELAY_MS, 0),
+
+  jwt: {
+    secret: jwtSecret,
+    algorithm: 'HS256',
+    issuer: process.env.JWT_ISSUER || 'voltix-auth-service',
+  },
 
   services: {
     catalogUrl: stripSlash(process.env.CATALOG_SERVICE_URL),
