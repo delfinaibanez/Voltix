@@ -31,7 +31,9 @@ const { cfg } = c;
     ['orders-service', cfg.orders], ['auth-service', cfg.auth]]) {
     const res = await c.call(base, 'GET', '/health');
     r.check('HEALTH', `${name} GET /health`, 200, res.status,
-      res.body?.service === name && res.body?.status === 'ok', `se esperaba {service:"${name}",status:"ok"}`);
+      // En Compose inventory-service corre como inventory-1/2/3 (SERVICE_NAME por nodo).
+      (res.body?.service === name || (name === 'inventory-service' && /^inventory-service|^inventory-\d+$/.test(res.body?.service || ''))) &&
+      res.body?.status === 'ok', `se esperaba {service:"${name}",status:"ok"}`);
   }
 
   // ---------- CRUD catálogo ----------
@@ -53,11 +55,11 @@ const { cfg } = c;
   r.check('CRUD-CAT', 'GET /api/products/<inexistente>', 404, res.status);
 
   // ---------- CRUD inventario ----------
-  res = await c.call(cfg.inventory, 'GET', `/api/stock/${c.ZERO_ID}`);
+  res = await c.call(cfg.inventory, 'GET', `/api/stock/${c.ZERO_ID}`, U);
   r.check('CRUD-INV', 'GET /api/stock/<sin stock>', 404, res.status);
   res = await c.call(cfg.inventory, 'PUT', `/api/stock/${P.id}`, { token: adminToken, body: { available: 40 } });
   r.check('CRUD-INV', 'PUT /api/stock/:id (ADMIN) available=40', [200, 201], res.status);
-  res = await c.call(cfg.inventory, 'GET', `/api/stock/${P.id}`);
+  res = await c.call(cfg.inventory, 'GET', `/api/stock/${P.id}`, U);
   r.check('CRUD-INV', 'GET /api/stock/:id', 200, res.status, res.body?.available === 40, 'available≠40');
 
   const o1 = c.newId();
@@ -134,18 +136,18 @@ const { cfg } = c;
   for (const [key, base, name] of [['catalog', cfg.catalog, 'catalog-service'], ['inventory', cfg.inventory, 'inventory-service']]) {
     const svc = cfg.compose[key];
     if (!c.dockerRunning(svc)) {
-      r.skip('FALLO', `Caída de ${name}`, `no corre en Compose (o --sin-docker). Manual: docker compose stop ${svc}; POST /api/orders → 503; docker compose start ${svc}`);
+      r.skip('FALLO', `Caída de ${name}`, `no corre en Compose (o --sin-docker). Manual: docker compose stop ${c.svcList(svc).join(' ')}; POST /api/orders → 503; docker compose start ${c.svcList(svc).join(' ')}`);
       continue;
     }
     try {
-      c.sh(`docker compose stop ${svc}`);
+      c.sh(`docker compose stop ${c.svcList(svc).join(' ')}`);
       res = await c.call(cfg.orders, 'POST', '/api/orders', { ...U, body: body([{ productId: P.id, quantity: 1 }]) });
       r.check('FALLO', `${name} detenido: POST /api/orders responde 503 nombrando la dependencia`, 503, res.status,
         new RegExp(key, 'i').test(res.text), `la respuesta no menciona "${key}"`);
       const h = await c.call(cfg.orders, 'GET', '/health');
       r.check('FALLO', 'orders-service sigue vivo (/health)', 200, h.status);
     } finally {
-      try { c.sh(`docker compose start ${svc}`); } catch { /* ya se informa abajo */ }
+      try { c.sh(`docker compose start ${c.svcList(svc).join(' ')}`); } catch { /* ya se informa abajo */ }
     }
     const up = await c.waitHealth(base);
     res = await c.call(cfg.orders, 'POST', '/api/orders', { ...U, body: body([{ productId: P.id, quantity: 1 }]) });
