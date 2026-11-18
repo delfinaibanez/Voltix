@@ -72,6 +72,7 @@ function errorHandler(err, req, res, next) {
     });
   }
 
+  if (status === 401) res.set('WWW-Authenticate', 'Bearer');
   if (retryAfter) res.set('Retry-After', String(retryAfter));
 
   const body = { status, error: TITLES[status] || 'Error', message };
