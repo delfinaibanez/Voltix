@@ -40,7 +40,8 @@ const cfg = {
   // Nombres de servicio en docker-compose.yml
   compose: {
     catalog: process.env.SVC_CATALOG || 'catalog-service',
-    inventory: process.env.SVC_INVENTORY || 'inventory-service',
+    // Lista separada por comas: inventory-service corre como 3 nodos en Compose.
+    inventory: process.env.SVC_INVENTORY || 'inventory-1,inventory-2,inventory-3',
     orders: process.env.SVC_ORDERS || 'orders-service',
     auth: process.env.SVC_AUTH || 'auth-service',
     authDb: process.env.SVC_AUTH_DB || 'auth-db',
@@ -124,8 +125,9 @@ async function getProducts(n = 1) {
     .slice(0, n)
     .map((p) => ({ ...p, id: p.id || p._id }));
 }
-async function stockOf(productId) {
-  const res = await call(cfg.inventory, 'GET', `/api/stock/${productId}`);
+// inventory exige token también en las lecturas: se firma uno USER local con JWT_SECRET.
+async function stockOf(productId, token = cfg.jwtSecret ? signJwt({ sub: 'pruebas-lectura', role: 'USER' }) : undefined) {
+  const res = await call(cfg.inventory, 'GET', `/api/stock/${productId}`, { token });
   return res.status === 200 ? res.body : null;
 }
 const newId = () => crypto.randomBytes(12).toString('hex'); // 24 hex, válido como ObjectId
@@ -135,10 +137,13 @@ const ZERO_ID = '0'.repeat(24);
 function sh(cmd) {
   return execSync(cmd, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 300000 });
 }
+// `service` puede ser un nombre o una lista separada por comas (todos deben estar corriendo).
+const svcList = (service) => String(service).split(',').map((s) => s.trim()).filter(Boolean);
 function dockerRunning(service) {
   if (SIN_DOCKER) return false;
   try {
-    return sh('docker compose ps --services --status running').split(/\r?\n/).map((s) => s.trim()).includes(service);
+    const running = sh('docker compose ps --services --status running').split(/\r?\n/).map((s) => s.trim());
+    return svcList(service).every((s) => running.includes(s));
   } catch { return false; }
 }
 async function waitHealth(base, ms = 180000) {
@@ -177,6 +182,6 @@ function createReporter(title) {
 module.exports = {
   ROOT, cfg, SIN_DOCKER, sleep, call, signJwt, unsignedJwt, decodeJwt, tamperJwt,
   registerBody, loginBody, extractToken, registerAndLogin, leaksCredentials,
-  extractList, getProducts, stockOf, newId, ZERO_ID, sh, dockerRunning, waitHealth,
+  svcList, extractList, getProducts, stockOf, newId, ZERO_ID, sh, dockerRunning, waitHealth,
   createReporter, createRequire,
 };
