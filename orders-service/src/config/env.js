@@ -49,7 +49,10 @@ const config = {
   services: {
     catalogUrls: toUrlList(process.env.CATALOG_SERVICE_URL),
     inventoryUrls: toUrlList(process.env.INVENTORY_SERVICE_URL),
-    timeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 3000),
+    timeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 2000),
+    // Tras agotar todos los nodos de una dependencia, durante esta ventana (ms) las nuevas
+    // llamadas fallan al instante con 503 (evita reintentar nodo por nodo en la compensación).
+    failFastMs: toInt(process.env.DEPENDENCY_FAILFAST_MS, 2000),
   },
 
   // HS256 con el MISMO secreto que auth-service; el token se valida localmente.
