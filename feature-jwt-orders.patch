@@ -1,0 +1,309 @@
+diff --git a/orders-service/.env.docker.example b/orders-service/.env.docker.example
+index c9215b4..a1cc47c 100644
+--- a/orders-service/.env.docker.example
++++ b/orders-service/.env.docker.example
+@@ -23,7 +23,9 @@ INVENTORY_SERVICE_URL=http://inventory-1:3000,http://inventory-2:3000,http://inv
+ AUTH_SERVICE_URL=http://auth-service:3000
+ 
+ # JWT: el MISMO secreto en los 4 servicios, mínimo 32 caracteres
++# Generar uno: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+ JWT_SECRET=cambiar-por-un-secreto-de-al-menos-32-caracteres
++JWT_ISSUER=voltix-auth-service
+ 
+ # Logging (Winston): consola (docker compose logs) + archivos rotativos en /app/logs
+ LOG_LEVEL=info
+diff --git a/orders-service/.env.example b/orders-service/.env.example
+index 47293d3..5427622 100644
+--- a/orders-service/.env.example
++++ b/orders-service/.env.example
+@@ -24,8 +24,10 @@ INVENTORY_SERVICE_URL=http://localhost:3002
+ # Timeout de cada llamada HTTP a otro servicio (ms)
+ REQUEST_TIMEOUT_MS=3000
+ 
+-# JWT (TP7): HS256, secreto compartido por todos los servicios, mínimo 32 caracteres
+-JWT_SECRET=
++# JWT: HS256, el secreto DEBE ser el mismo en todos los servicios y tener 32+ caracteres.
++# Generar uno: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
++JWT_SECRET=CAMBIAR_POR_UN_SECRETO_LARGO_Y_ALEATORIO
++JWT_ISSUER=voltix-auth-service
+ 
+ # Logging (Winston). Rotación por fecha y por tamaño, con retención limitada.
+ LOG_LEVEL=info
+diff --git a/orders-service/logs/.12d495c90c63d17f0f3fedf1f6aa3dc7065831aa-audit.json b/orders-service/logs/.12d495c90c63d17f0f3fedf1f6aa3dc7065831aa-audit.json
+deleted file mode 100644
+index 060d46d..0000000
+--- a/orders-service/logs/.12d495c90c63d17f0f3fedf1f6aa3dc7065831aa-audit.json
++++ /dev/null
+@@ -1,15 +0,0 @@
+-{
+-    "keep": {
+-        "days": true,
+-        "amount": 14
+-    },
+-    "auditLog": "C:\\Users\\Carolina\\Documents\\codigos\\Voltix\\orders-service\\logs\\.12d495c90c63d17f0f3fedf1f6aa3dc7065831aa-audit.json",
+-    "files": [
+-        {
+-            "date": 1794953985494,
+-            "name": "C:\\Users\\Carolina\\Documents\\codigos\\Voltix\\orders-service\\logs\\app-2026-11-17.log",
+-            "hash": "49e796564297083c5240184083335c8ef2db44210ff609b078ad64d0caea897a"
+-        }
+-    ],
+-    "hashType": "sha256"
+-}
+\ No newline at end of file
+diff --git a/orders-service/logs/.9cc674f6a4bd8e5eab60cc0462adc115018ab2ac-audit.json b/orders-service/logs/.9cc674f6a4bd8e5eab60cc0462adc115018ab2ac-audit.json
+deleted file mode 100644
+index 8405092..0000000
+--- a/orders-service/logs/.9cc674f6a4bd8e5eab60cc0462adc115018ab2ac-audit.json
++++ /dev/null
+@@ -1,15 +0,0 @@
+-{
+-    "keep": {
+-        "days": true,
+-        "amount": 14
+-    },
+-    "auditLog": "C:\\Users\\Carolina\\Documents\\codigos\\Voltix\\orders-service\\logs\\.9cc674f6a4bd8e5eab60cc0462adc115018ab2ac-audit.json",
+-    "files": [
+-        {
+-            "date": 1794953985498,
+-            "name": "C:\\Users\\Carolina\\Documents\\codigos\\Voltix\\orders-service\\logs\\error-2026-11-17.log",
+-            "hash": "202f3a6fddc73fda354fdf69180cf26d53e61fa7cce1a890ec4251e03819bb6a"
+-        }
+-    ],
+-    "hashType": "sha256"
+-}
+\ No newline at end of file
+diff --git a/orders-service/src/config/env.js b/orders-service/src/config/env.js
+index bc25356..fb214f6 100644
+--- a/orders-service/src/config/env.js
++++ b/orders-service/src/config/env.js
+@@ -17,6 +17,15 @@ const toUrlList = (value) =>
+     .map(stripSlash)
+     .filter(Boolean);
+ 
++// El secreto JWT es configuración del entorno: nunca va en el código ni en Git.
++// Si falta o es corto, el servicio no arranca.
++const jwtSecret = process.env.JWT_SECRET || '';
++if (jwtSecret.length < 32 || jwtSecret.startsWith('CAMBIAR')) {
++  throw new Error(
++    'JWT_SECRET es obligatorio: debe tener al menos 32 caracteres y no puede ser el valor de ejemplo (ver .env.example)',
++  );
++}
++
+ const config = {
+   serviceName: process.env.SERVICE_NAME || 'orders-service',
+   env: process.env.NODE_ENV || 'development',
+@@ -43,10 +52,11 @@ const config = {
+     timeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 3000),
+   },
+ 
+-  // HS256 con secreto compartido; issuer fijo del contrato.
++  // HS256 con el MISMO secreto que auth-service; el token se valida localmente.
+   jwt: {
+-    secret: process.env.JWT_SECRET,
+-    issuer: 'voltix-auth-service',
++    secret: jwtSecret,
++    algorithm: 'HS256', // se fija explícitamente al verificar
++    issuer: process.env.JWT_ISSUER || 'voltix-auth-service',
+   },
+ 
+   log: {
+diff --git a/orders-service/src/docs/openapi.js b/orders-service/src/docs/openapi.js
+index 379abbe..afa46d9 100644
+--- a/orders-service/src/docs/openapi.js
++++ b/orders-service/src/docs/openapi.js
+@@ -197,7 +197,16 @@ module.exports = {
+     },
+   },
+   components: {
+-    securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
++    securitySchemes: {
++      bearerAuth: {
++        type: 'http',
++        scheme: 'bearer',
++        bearerFormat: 'JWT',
++        description:
++          'JWT HS256 emitido por auth-service (POST /api/auth/login). Claims: sub, role (USER|ADMIN), iat, exp, iss. ' +
++          'Sin token, mal formado, con firma inválida o vencido -> 401. Token válido pero sin permiso sobre el recurso -> 403.',
++      },
++    },
+     schemas: {
+       CreateOrder: {
+         type: 'object',
+diff --git a/orders-service/src/middlewares/auth.js b/orders-service/src/middlewares/auth.js
+deleted file mode 100644
+index 8093146..0000000
+--- a/orders-service/src/middlewares/auth.js
++++ /dev/null
+@@ -1,39 +0,0 @@
+-// TODO (TP7): reemplazar este archivo por los middlewares reales de
+-// auth-service/src/middlewares/ cuando auth-service esté en develop.
+-// Si el real deja la identidad en otra propiedad (no req.user = { id, role }),
+-// solo hay que adaptar src/utils/identity.js.
+-//
+-// Mientras tanto implementa el mismo contrato: JWT HS256 validado localmente con
+-// JWT_SECRET e issuer voltix-auth-service. 401 = sin identidad válida, 403 = rol insuficiente.
+-
+-const jwt = require('jsonwebtoken');
+-const config = require('../config/env');
+-const AppError = require('../utils/appError');
+-
+-const ROLES = ['USER', 'ADMIN'];
+-
+-function authenticate(req, res, next) {
+-  const [scheme, token] = (req.headers.authorization || '').split(' ');
+-  if (scheme !== 'Bearer' || !token) throw AppError.unauthorized('Falta el token Bearer');
+-
+-  let payload;
+-  try {
+-    payload = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'], issuer: config.jwt.issuer });
+-  } catch (err) {
+-    throw AppError.unauthorized(err.name === 'TokenExpiredError' ? 'Token vencido' : 'Token inválido');
+-  }
+-
+-  if (!payload.sub || !ROLES.includes(payload.role)) throw AppError.unauthorized('Token inválido');
+-
+-  req.user = { id: String(payload.sub), role: payload.role };
+-  next();
+-}
+-
+-function authorize(...roles) {
+-  return (req, res, next) => {
+-    if (!req.user || !roles.includes(req.user.role)) throw AppError.forbidden();
+-    next();
+-  };
+-}
+-
+-module.exports = { authenticate, authorize };
+diff --git a/orders-service/src/middlewares/authenticate.js b/orders-service/src/middlewares/authenticate.js
+new file mode 100644
+index 0000000..104a377
+--- /dev/null
++++ b/orders-service/src/middlewares/authenticate.js
+@@ -0,0 +1,34 @@
++const AppError = require('../utils/appError');
++const logger = require('../utils/logger');
++const { verifyAccessToken } = require('../services/token.service');
++
++const VALID_ROLES = ['USER', 'ADMIN'];
++
++// Exige Authorization: Bearer <token>. Sin token, mal formado, firma inválida
++// o vencido -> 401. Si es válido deja la identidad en req.user.
++function authenticate(req, res, next) {
++  const [scheme, token] = (req.headers.authorization || '').split(' ');
++
++  if (!scheme || scheme.toLowerCase() !== 'bearer' || !token) {
++    throw new AppError(401, 'Falta el token de acceso (Authorization: Bearer <token>)');
++  }
++
++  let payload;
++  try {
++    payload = verifyAccessToken(token);
++  } catch (err) {
++    // Se registra el motivo técnico (sin el token); al cliente solo un mensaje genérico.
++    logger.warn('Token rechazado', { reason: err.name, endpoint: req.originalUrl.split('?')[0] });
++    throw new AppError(401, err.name === 'TokenExpiredError' ? 'Token vencido' : 'Token inválido');
++  }
++
++  if (!payload.sub || !VALID_ROLES.includes(payload.role)) {
++    logger.warn('Token rechazado', { reason: 'claims_invalidos' });
++    throw new AppError(401, 'Token inválido');
++  }
++
++  req.user = { id: payload.sub, role: payload.role };
++  next();
++}
++
++module.exports = authenticate;
+\ No newline at end of file
+diff --git a/orders-service/src/middlewares/authorize.js b/orders-service/src/middlewares/authorize.js
+new file mode 100644
+index 0000000..a3c8de6
+--- /dev/null
++++ b/orders-service/src/middlewares/authorize.js
+@@ -0,0 +1,22 @@
++const AppError = require('../utils/appError');
++const logger = require('../utils/logger');
++
++// Autorización por rol. Se usa DESPUÉS de authenticate.
++// Identidad válida pero rol insuficiente -> 403.
++function authorize(...allowedRoles) {
++  return (req, res, next) => {
++    if (!req.user) throw new AppError(401, 'No hay una identidad autenticada');
++
++    if (!allowedRoles.includes(req.user.role)) {
++      logger.warn('Acceso denegado por rol', {
++        userId: req.user.id,
++        role: req.user.role,
++        endpoint: req.originalUrl.split('?')[0],
++      });
++      throw new AppError(403, 'No tenés permisos para realizar esta operación');
++    }
++    next();
++  };
++}
++
++module.exports = authorize;
+\ No newline at end of file
+diff --git a/orders-service/src/routes/order.routes.js b/orders-service/src/routes/order.routes.js
+index 0165566..b67da7e 100644
+--- a/orders-service/src/routes/order.routes.js
++++ b/orders-service/src/routes/order.routes.js
+@@ -1,7 +1,8 @@
+ const { Router } = require('express');
+ const controller = require('../controllers/order.controller');
+ const validateObjectId = require('../middlewares/validateObjectId');
+-const { authenticate, authorize } = require('../middlewares/auth');
++const authenticate = require('../middlewares/authenticate');
++const authorize = require('../middlewares/authorize');
+ 
+ const router = Router();
+ 
+diff --git a/orders-service/src/server.js b/orders-service/src/server.js
+index 3b6bfcd..728f40f 100644
+--- a/orders-service/src/server.js
++++ b/orders-service/src/server.js
+@@ -35,10 +35,6 @@ function loadCertificate() {
+ }
+ 
+ async function start() {
+-  if (!config.jwt.secret || config.jwt.secret.length < 32) {
+-    throw new Error('JWT_SECRET es obligatorio y debe tener al menos 32 caracteres');
+-  }
+-
+   await connectWithRetry();
+   await Order.init(); // crea los índices antes de recibir tráfico
+ 
+diff --git a/orders-service/src/services/token.service.js b/orders-service/src/services/token.service.js
+new file mode 100644
+index 0000000..8dcfb84
+--- /dev/null
++++ b/orders-service/src/services/token.service.js
+@@ -0,0 +1,14 @@
++const jwt = require('jsonwebtoken');
++const config = require('../config/env');
++
++// Solo se aceptan tokens HS256 firmados con el secreto compartido y emitidos por auth-service.
++// Rechaza tokens sin firma ("alg: none"), con otro algoritmo, alterados o vencidos.
++// La firma se valida localmente: orders-service nunca consulta a auth-service.
++function verifyAccessToken(token) {
++  return jwt.verify(token, config.jwt.secret, {
++    algorithms: [config.jwt.algorithm],
++    issuer: config.jwt.issuer,
++  });
++}
++
++module.exports = { verifyAccessToken };
+diff --git a/orders-service/src/utils/identity.js b/orders-service/src/utils/identity.js
+index c799fa0..8d6921f 100644
+--- a/orders-service/src/utils/identity.js
++++ b/orders-service/src/utils/identity.js
+@@ -1,5 +1,6 @@
+-// Identidad del usuario autenticado, tal como la deja el middleware authenticate.
+-// Único punto a adaptar si el authenticate real de auth-service la deja en otra propiedad.
++// Identidad del usuario autenticado, tal como la deja el middleware authenticate
++// (copiado de auth-service): req.user = { id: sub del token, role }.
++// El dueño de una orden SIEMPRE sale de acá, nunca del body ni de la query.
+ function getIdentity(req) {
+   const user = req.user || {};
+   return { id: user.id, role: user.role };
