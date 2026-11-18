@@ -1,0 +1,178 @@
+# Voltix - entorno completo con Docker Compose
+#
+#   docker compose up -d --build
+#
+# Antes: generar los certificados (scripts/gen-certs.ps1) y crear cada
+# <servicio>/.env.docker a partir de su .env.docker.example.
+#
+# Redes:
+#   - backend (internal): bases de datos y Redis. Sin salida ni puertos al host.
+#   - edge: servicios de la API. Solo se publican sus puertos HTTPS.
+
+name: voltix
+
+# ---------------------------------------------------------------------------
+# Bloques reutilizables
+# ---------------------------------------------------------------------------
+x-service: &service
+  restart: unless-stopped
+  networks: [backend, edge]
+  volumes:
+    - ./certs:/certs:ro # certificado autofirmado, solo lectura
+
+x-mongo: &mongo
+  image: mongo:7
+  restart: unless-stopped
+  networks: [backend]
+  healthcheck:
+    test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+    interval: 10s
+    timeout: 5s
+    retries: 10
+    start_period: 20s
+
+x-inventory: &inventory
+  <<: *service
+  build: ./inventory-service
+  image: voltix/inventory-service
+  env_file: ./inventory-service/.env.docker
+
+services:
+  # -------------------------------------------------------------------------
+  # Servicios de la API
+  # -------------------------------------------------------------------------
+  catalog-service:
+    <<: *service
+    build: ./catalog-service
+    image: voltix/catalog-service
+    env_file: ./catalog-service/.env.docker
+    ports:
+      - "4001:3443"
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+
+  # inventory-service corre como 3 nodos. Comparten Redis (el lock es
+  # distribuido entre los 3) y cada uno tiene su propia base.
+  inventory-1:
+    <<: *inventory
+    environment:
+      SERVICE_NAME: inventory-1
+      NODE_ID: inventory-1
+      MONGODB_URI: mongodb://inventory-1-db:27017/inventory_db
+    ports:
+      - "4002:3443"
+    depends_on:
+      inventory-1-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  inventory-2:
+    <<: *inventory
+    environment:
+      SERVICE_NAME: inventory-2
+      NODE_ID: inventory-2
+      MONGODB_URI: mongodb://inventory-2-db:27017/inventory_db
+    ports:
+      - "4012:3443"
+    depends_on:
+      inventory-2-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  inventory-3:
+    <<: *inventory
+    environment:
+      SERVICE_NAME: inventory-3
+      NODE_ID: inventory-3
+      MONGODB_URI: mongodb://inventory-3-db:27017/inventory_db
+    ports:
+      - "4022:3443"
+    depends_on:
+      inventory-3-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  orders-service:
+    <<: *service
+    build: ./orders-service
+    image: voltix/orders-service
+    env_file: ./orders-service/.env.docker
+    ports:
+      - "4003:3443"
+    depends_on:
+      orders-db:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      inventory-1:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+
+  auth-service:
+    <<: *service
+    build: ./auth-service
+    image: voltix/auth-service
+    env_file: ./auth-service/.env.docker
+    ports:
+      - "4004:3443"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  # Infraestructura (sin puertos publicados)
+  # -------------------------------------------------------------------------
+  catalog-db:
+    <<: *mongo
+    volumes: [catalog-db-data:/data/db]
+
+  inventory-1-db:
+    <<: *mongo
+    volumes: [inventory-1-db-data:/data/db]
+
+  inventory-2-db:
+    <<: *mongo
+    volumes: [inventory-2-db-data:/data/db]
+
+  inventory-3-db:
+    <<: *mongo
+    volumes: [inventory-3-db-data:/data/db]
+
+  orders-db:
+    <<: *mongo
+    volumes: [orders-db-data:/data/db]
+
+  auth-db:
+    <<: *mongo
+    volumes: [auth-db-data:/data/db]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    networks: [backend]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+networks:
+  backend:
+    internal: true # sin acceso desde/hacia afuera de Docker
+  edge: {}
+
+volumes:
+  catalog-db-data:
+  inventory-1-db-data:
+  inventory-2-db-data:
+  inventory-3-db-data:
+  orders-db-data:
+  auth-db-data:
+  redis-data:
