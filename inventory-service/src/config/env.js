@@ -10,6 +10,81 @@ const toInt = (value, fallback) => {
 
 const stripSlash = (url) => (url ? url.replace(/\/+$/, '') : url);
 
+// "id=url,id=url" -> { id: url }
+const parseMap = (value, variableName) => {
+  const entries = String(value || '')
+    .split(',')
+    .map((pair) => pair.trim())
+    .filter(Boolean);
+  const result = {};
+
+  for (const entry of entries) {
+    const separator = entry.indexOf('=');
+    if (separator <= 0 || separator === entry.length - 1) {
+      throw new Error(`${variableName} debe tener el formato id=url,id=url`);
+    }
+
+    const id = entry.slice(0, separator).trim();
+    const url = stripSlash(entry.slice(separator + 1).trim());
+    if (!id || !url || Object.prototype.hasOwnProperty.call(result, id)) {
+      throw new Error(`${variableName} contiene un nodo inválido o duplicado`);
+    }
+    result[id] = url;
+  }
+
+  return result;
+};
+
+function buildRaftConfig() {
+  const enabled = toBool(process.env.RAFT_ENABLED, false);
+  const nodeId = process.env.NODE_ID || process.env.SERVICE_NAME || 'inventory-service';
+  const peerMap = parseMap(process.env.RAFT_PEERS, 'RAFT_PEERS');
+  const publicUrls = parseMap(process.env.RAFT_PUBLIC_URLS, 'RAFT_PUBLIC_URLS');
+  const token = process.env.RAFT_TOKEN || '';
+
+  if (enabled) {
+    if (Object.keys(peerMap).length !== 3) {
+      throw new Error('RAFT_PEERS debe definir exactamente los 3 nodos del cluster');
+    }
+    if (!peerMap[nodeId]) {
+      throw new Error(`RAFT_PEERS tiene que incluir a este nodo (NODE_ID=${nodeId}): id=http://host:puerto,...`);
+    }
+    if (token.length < 16 || /^cambiar/i.test(token)) {
+      throw new Error(
+        'RAFT_TOKEN es obligatorio con Raft activo (mínimo 16 caracteres, distinto del valor de ejemplo e igual en los 3 nodos)',
+      );
+    }
+    if (token === jwtSecret) {
+      throw new Error('RAFT_TOKEN debe ser distinto de JWT_SECRET');
+    }
+  }
+
+  return {
+    enabled,
+    nodeId,
+    peers: Object.entries(peerMap).map(([id, url]) => ({ id, url })),
+    publicUrls,
+    token,
+    rpcTimeoutMs: toInt(process.env.RAFT_RPC_TIMEOUT_MS, 800),
+    timing: {
+      heartbeatMs: toInt(process.env.RAFT_HEARTBEAT_MS, 300),
+      electionMinMs: toInt(process.env.RAFT_ELECTION_MIN_MS, 1200),
+      electionMaxMs: toInt(process.env.RAFT_ELECTION_MAX_MS, 2400),
+      proposeTimeoutMs: toInt(process.env.RAFT_PROPOSE_TIMEOUT_MS, 3000),
+    },
+  };
+}
+
+// El secreto JWT es configuración del entorno: nunca va en el código ni en Git.
+// Tiene que ser el MISMO que usa auth-service para firmar.
+const jwtSecret = process.env.JWT_SECRET || '';
+if (jwtSecret.length < 32 || /^cambiar/i.test(jwtSecret)) {
+  throw new Error(
+    'JWT_SECRET es obligatorio: debe tener al menos 32 caracteres, ser el mismo que el de ' +
+      'auth-service y no puede ser el valor de ejemplo (ver .env.example)',
+  );
+}
+
 const config = {
   serviceName: process.env.SERVICE_NAME || 'inventory-service',
   env: process.env.NODE_ENV || 'development',
@@ -33,6 +108,8 @@ const config = {
     url: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
   },
 
+  raft: buildRaftConfig(),
+
   // Exclusión mutua distribuida (TP2)
   lock: {
     // false solo para reproducir la condición de carrera (scripts/race-demo.js).
@@ -53,6 +130,12 @@ const config = {
   // Retardo artificial dentro de la sección crítica, para hacer visible la
   // condición de carrera. En uso normal debe quedar en 0.
   demoDelayMs: toInt(process.env.DEMO_DELAY_MS, 0),
+
+  jwt: {
+    secret: jwtSecret,
+    algorithm: 'HS256',
+    issuer: process.env.JWT_ISSUER || 'voltix-auth-service',
+  },
 
   services: {
     catalogUrl: stripSlash(process.env.CATALOG_SERVICE_URL),

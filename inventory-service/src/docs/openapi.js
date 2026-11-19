@@ -29,13 +29,13 @@ const badRequest = (message, details) =>
 const unauthorized = errorResponse('Falta el token Bearer o es inválido / está vencido', {
   status: 401,
   error: 'Unauthorized',
-  message: 'Token ausente o inválido',
+  message: 'Falta el token de acceso (Authorization: Bearer <token>)',
 });
 
 const forbidden = errorResponse('El token es válido pero el rol no alcanza (se requiere ADMIN)', {
   status: 403,
   error: 'Forbidden',
-  message: 'No tenés permisos para esta operación',
+  message: 'No tenés permisos para realizar esta operación',
 });
 
 const notFoundStock = errorResponse('No hay stock registrado para ese producto', {
@@ -94,7 +94,7 @@ const reservationResponse = (description, status = 'RESERVED') => ({
   },
 });
 
-module.exports = {
+const openapi = {
   openapi: '3.0.3',
   info: {
     title: 'Voltix - Inventory Service',
@@ -102,7 +102,8 @@ module.exports = {
     description:
       'Stock y reservas de los productos de Voltix. Las escrituras (set stock, reserve, release) se ' +
       'ejecutan en exclusión mutua por producto con un lock distribuido en Redis ' +
-      '(SET NX PX + liberación con script Lua). Las reservas son idempotentes por (orderId, productId).',
+      '(SET NX PX + liberación con script Lua) y, con Raft activo, se replican y confirman por mayoría. ' +
+      'Las reservas son idempotentes por (orderId, productId).',
   },
   servers: [{ url: '/', description: 'Servidor actual (HTTP o HTTPS)' }],
   tags: [
@@ -131,13 +132,15 @@ module.exports = {
     '/api/stock/{productId}': {
       get: {
         tags: ['Stock'],
-        summary: 'Consultar el stock de un producto',
+        summary: 'Consultar el stock de un producto (USER o ADMIN)',
+        security: [{ bearerAuth: [] }],
         parameters: [productIdParam],
         responses: {
           200: stockResponse('Stock del producto'),
           400: badRequest('El productId no tiene un formato válido', [
             { field: 'productId', message: 'Debe ser un ObjectId de 24 caracteres hexadecimales' },
           ]),
+          401: unauthorized,
           404: notFoundStock,
           500: internalError,
         },
@@ -174,7 +177,7 @@ module.exports = {
     '/api/stock/{productId}/reserve': {
       post: {
         tags: ['Reservas'],
-        summary: 'Reservar stock para una orden',
+        summary: 'Reservar stock para una orden (USER o ADMIN)',
         description:
           'Descuenta "quantity" de available y lo suma a reserved. Idempotente por (orderId, productId): ' +
           'repetir la misma reserva devuelve 200 con la reserva existente sin descontar de nuevo.',
@@ -214,7 +217,7 @@ module.exports = {
     '/api/stock/{productId}/release': {
       post: {
         tags: ['Reservas'],
-        summary: 'Liberar la reserva de una orden',
+        summary: 'Liberar la reserva de una orden (USER o ADMIN)',
         description:
           'Devuelve las unidades reservadas a available. Idempotente: liberar una reserva ya liberada responde 200 sin devolver stock otra vez.',
         security: [{ bearerAuth: [] }],
@@ -251,7 +254,7 @@ module.exports = {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
-        description: 'JWT emitido por auth-service (HS256, issuer voltix-auth-service)',
+        description: 'JWT emitido por auth-service (HS256, issuer voltix-auth-service). Todas las rutas /api/stock lo requieren; orders-service reenvía el token del usuario.',
       },
     },
     schemas: {
@@ -322,3 +325,11 @@ module.exports = {
     },
   },
 };
+
+const raftDocs = require('./raft.openapi');
+openapi.tags.push(...raftDocs.tags);
+Object.assign(openapi.paths, raftDocs.paths);
+Object.assign(openapi.components.schemas, raftDocs.schemas);
+Object.assign(openapi.components.securitySchemes, raftDocs.securitySchemes);
+
+module.exports = openapi;

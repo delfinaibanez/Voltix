@@ -51,6 +51,21 @@ const internalError = errorResponse('Error inesperado del servidor o de la persi
   message: 'Error interno del servidor',
 });
 
+const unauthorized = errorResponse('Falta el token Bearer, es inválido o está vencido', {
+  status: 401,
+  error: 'Unauthorized',
+  message: 'Falta el token de acceso (Authorization: Bearer <token>)',
+});
+
+const forbidden = errorResponse('Token válido pero sin rol ADMIN', {
+  status: 403,
+  error: 'Forbidden',
+  message: 'No tenés permisos para realizar esta operación',
+});
+
+// Escrituras: solo ADMIN con token Bearer.
+const adminSecurity = [{ bearerAuth: [] }];
+
 const productExample = {
   id: '665f1c2e8a1b2c3d4e5f6a7b',
   sku: 'MOU-LOGI-G203',
@@ -152,7 +167,8 @@ const openapi = {
       },
       post: {
         tags: ['Products'],
-        summary: 'Crear un producto',
+        summary: 'Crear un producto (solo ADMIN)',
+        security: adminSecurity,
         requestBody: {
           required: true,
           content: {
@@ -165,6 +181,8 @@ const openapi = {
         responses: {
           201: productResponse('Producto creado'),
           400: invalidBody,
+          401: unauthorized,
+          403: forbidden,
           409: conflictSku,
           500: internalError,
         },
@@ -184,7 +202,8 @@ const openapi = {
       },
       put: {
         tags: ['Products'],
-        summary: 'Reemplazar un producto (todos los campos obligatorios)',
+        summary: 'Reemplazar un producto (todos los campos obligatorios) (solo ADMIN)',
+        security: adminSecurity,
         parameters: [idParam],
         requestBody: {
           required: true,
@@ -198,6 +217,8 @@ const openapi = {
         responses: {
           200: productResponse('Producto reemplazado'),
           400: invalidBody,
+          401: unauthorized,
+          403: forbidden,
           404: notFoundProduct,
           409: conflictSku,
           500: internalError,
@@ -205,7 +226,8 @@ const openapi = {
       },
       patch: {
         tags: ['Products'],
-        summary: 'Modificar parcialmente un producto',
+        summary: 'Modificar parcialmente un producto (solo ADMIN)',
+        security: adminSecurity,
         parameters: [idParam],
         requestBody: {
           required: true,
@@ -219,6 +241,8 @@ const openapi = {
         responses: {
           200: productResponse('Producto modificado'),
           400: invalidBody,
+          401: unauthorized,
+          403: forbidden,
           404: notFoundProduct,
           409: conflictSku,
           500: internalError,
@@ -226,11 +250,14 @@ const openapi = {
       },
       delete: {
         tags: ['Products'],
-        summary: 'Eliminar un producto',
+        summary: 'Eliminar un producto (solo ADMIN)',
+        security: adminSecurity,
         parameters: [idParam],
         responses: {
           204: { description: 'Producto eliminado (sin contenido)' },
           400: badRequestId,
+          401: unauthorized,
+          403: forbidden,
           404: notFoundProduct,
           500: internalError,
         },
@@ -238,6 +265,14 @@ const openapi = {
     },
   },
   components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'JWT emitido por auth-service (HS256, issuer voltix-auth-service). Las lecturas son públicas.',
+      },
+    },
     schemas: {
       Product: {
         type: 'object',

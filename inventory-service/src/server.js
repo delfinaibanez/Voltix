@@ -9,6 +9,7 @@ const { connectWithRetry } = require('./config/db');
 const { connectRedis, disconnectRedis } = require('./config/redis');
 const { Stock } = require('./models/stock.model');
 const { Reservation } = require('./models/reservation.model');
+const raft = require('./raft');
 const createApp = require('./app');
 
 const servers = [];
@@ -74,10 +75,14 @@ async function start() {
     servers.push(httpsServer);
     await listen(httpsServer, config.https.port, 'HTTPS');
   }
+
+  // Raft arranca con los puertos ya abiertos: los otros nodos necesitan llegar a /raft.
+  await raft.start();
 }
 
 async function shutdown(signal) {
   logger.info('Apagando servicio', { signal });
+  await raft.stop();
   await Promise.all(servers.map((s) => new Promise((resolve) => s.close(resolve))));
   await disconnectRedis();
   await mongoose.disconnect();

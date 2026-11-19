@@ -35,10 +35,6 @@ function loadCertificate() {
 }
 
 async function start() {
-  if (!config.jwt.secret || config.jwt.secret.length < 32) {
-    throw new Error('JWT_SECRET es obligatorio y debe tener al menos 32 caracteres');
-  }
-
   await connectWithRetry();
   await Order.init(); // crea los índices antes de recibir tráfico
 

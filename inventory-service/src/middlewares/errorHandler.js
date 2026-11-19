@@ -11,6 +11,7 @@ const TITLES = {
   403: 'Forbidden',
   404: 'Not Found',
   409: 'Conflict',
+  307: 'Temporary Redirect',
   413: 'Payload Too Large',
   500: 'Internal Server Error',
   503: 'Service Unavailable',
@@ -20,7 +21,13 @@ const TITLES = {
 // consistente. Nunca se devuelven stack traces ni detalles internos.
 function toHttpError(err) {
   if (err instanceof AppError) {
-    return { status: err.statusCode, message: err.message, details: err.details, retryAfter: err.retryAfter };
+    return {
+      status: err.statusCode,
+      message: err.message,
+      details: err.details,
+      retryAfter: err.retryAfter,
+      leader: err.leader,
+    };
   }
 
   if (err.name === 'ValidationError' && err.errors) {
@@ -61,7 +68,7 @@ function toHttpError(err) {
 function errorHandler(err, req, res, next) {
   if (res.headersSent) return next(err);
 
-  const { status, message, details, retryAfter } = toHttpError(err);
+  const { status, message, details, retryAfter, leader } = toHttpError(err);
 
   if (status >= 500) {
     logger.error(status === 503 ? 'Dependencia no disponible' : 'Error no controlado', {
@@ -72,10 +79,16 @@ function errorHandler(err, req, res, next) {
     });
   }
 
+  if (status === 401) res.set('WWW-Authenticate', 'Bearer');
   if (retryAfter) res.set('Retry-After', String(retryAfter));
+  if (status === 307 && leader) {
+    const target = (req.secure ? leader.publicUrl : leader.internalUrl) || leader.publicUrl || leader.internalUrl;
+    res.set('Location', target + req.originalUrl);
+  }
 
   const body = { status, error: TITLES[status] || 'Error', message };
   if (details) body.details = details;
+  if (leader) body.leader = { id: leader.id };
   return res.status(status).json(body);
 }
 

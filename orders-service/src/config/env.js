@@ -17,6 +17,15 @@ const toUrlList = (value) =>
     .map(stripSlash)
     .filter(Boolean);
 
+// El secreto JWT es configuración del entorno: nunca va en el código ni en Git.
+// Si falta o es corto, el servicio no arranca.
+const jwtSecret = process.env.JWT_SECRET || '';
+if (jwtSecret.length < 32 || jwtSecret.startsWith('CAMBIAR')) {
+  throw new Error(
+    'JWT_SECRET es obligatorio: debe tener al menos 32 caracteres y no puede ser el valor de ejemplo (ver .env.example)',
+  );
+}
+
 const config = {
   serviceName: process.env.SERVICE_NAME || 'orders-service',
   env: process.env.NODE_ENV || 'development',
@@ -40,13 +49,17 @@ const config = {
   services: {
     catalogUrls: toUrlList(process.env.CATALOG_SERVICE_URL),
     inventoryUrls: toUrlList(process.env.INVENTORY_SERVICE_URL),
-    timeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 3000),
+    timeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 2000),
+    // Tras agotar todos los nodos de una dependencia, durante esta ventana (ms) las nuevas
+    // llamadas fallan al instante con 503 (evita reintentar nodo por nodo en la compensación).
+    failFastMs: toInt(process.env.DEPENDENCY_FAILFAST_MS, 2000),
   },
 
-  // HS256 con secreto compartido; issuer fijo del contrato.
+  // HS256 con el MISMO secreto que auth-service; el token se valida localmente.
   jwt: {
-    secret: process.env.JWT_SECRET,
-    issuer: 'voltix-auth-service',
+    secret: jwtSecret,
+    algorithm: 'HS256', // se fija explícitamente al verificar
+    issuer: process.env.JWT_ISSUER || 'voltix-auth-service',
   },
 
   log: {

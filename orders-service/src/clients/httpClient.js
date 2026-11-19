@@ -7,6 +7,8 @@ const MAX_REDIRECTS = 3;
 const PASS_THROUGH = new Set([400, 401, 403, 404, 409]);
 // Último origen que respondió por dependencia (p. ej. el líder del cluster): se prueba primero.
 const preferred = new Map();
+// Dependencia -> instante (ms) hasta el cual se responde 503 sin llamar a la red.
+const downUntil = new Map();
 
 function describeCause(err) {
   if (err.name === 'TimeoutError' || err.name === 'AbortError') {
@@ -81,6 +83,11 @@ function handleResponse({ dependency, method, path, status, text, notFoundMessag
 async function callService({ dependency, baseUrls, method = 'GET', path, authorization, body, notFoundMessage }) {
   if (baseUrls.length === 0) throw new Error(`Falta configurar la URL de ${dependency}`);
 
+  const until = downUntil.get(dependency);
+  if (until && Date.now() < until) {
+    throw AppError.serviceUnavailable(`${dependency} no está disponible (sin nodos que respondan)`, { dependency });
+  }
+
   const headers = { Accept: 'application/json' };
   if (authorization) headers.Authorization = authorization;
   let payload;
@@ -110,9 +117,11 @@ async function callService({ dependency, baseUrls, method = 'GET', path, authori
     }
 
     preferred.set(dependency, new URL(result.url).origin);
+    downUntil.delete(dependency);
     return handleResponse({ dependency, method, path, notFoundMessage, ...result });
   }
 
+  downUntil.set(dependency, Date.now() + config.services.failFastMs);
   throw AppError.serviceUnavailable(`${dependency} no está disponible (${failures.join('; ')})`, { dependency });
 }
 

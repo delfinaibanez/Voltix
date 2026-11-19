@@ -197,7 +197,16 @@ module.exports = {
     },
   },
   components: {
-    securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description:
+          'JWT HS256 emitido por auth-service (POST /api/auth/login). Claims: sub, role (USER|ADMIN), iat, exp, iss. ' +
+          'Sin token, mal formado, con firma inválida o vencido -> 401. Token válido pero sin permiso sobre el recurso -> 403.',
+      },
+    },
     schemas: {
       CreateOrder: {
         type: 'object',
