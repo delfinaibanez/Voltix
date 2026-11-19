@@ -313,10 +313,7 @@ docker compose exec inventory-1 node scripts/race-demo.js --url http://localhost
 
 El script necesita un token de ADMIN: `--token <jwt>` (se obtiene con `POST /auth/login`).
 
-## Forma de trabajo
-
-- `main` = estable, `develop` = integración.
-- Una rama `feature/<tarea>` por tarea, creada desde `develop`, con Pull Request hacia `develop`.
-- Cada integrante revisa el PR de otra persona, no el suyo.
-- Commits en español, cada una con su propia cuenta de GitHub.
-- Nunca se suben `.env`, `.env.docker`, `certs/`, `node_modules` ni logs.
+##integrantes 
+Delfina Ibañez 
+Carolina Fetta
+Candela Aguilar
