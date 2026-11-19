@@ -94,7 +94,7 @@ const reservationResponse = (description, status = 'RESERVED') => ({
   },
 });
 
-module.exports = {
+const openapi = {
   openapi: '3.0.3',
   info: {
     title: 'Voltix - Inventory Service',
@@ -102,7 +102,8 @@ module.exports = {
     description:
       'Stock y reservas de los productos de Voltix. Las escrituras (set stock, reserve, release) se ' +
       'ejecutan en exclusión mutua por producto con un lock distribuido en Redis ' +
-      '(SET NX PX + liberación con script Lua). Las reservas son idempotentes por (orderId, productId).',
+      '(SET NX PX + liberación con script Lua) y, con Raft activo, se replican y confirman por mayoría. ' +
+      'Las reservas son idempotentes por (orderId, productId).',
   },
   servers: [{ url: '/', description: 'Servidor actual (HTTP o HTTPS)' }],
   tags: [
@@ -324,3 +325,11 @@ module.exports = {
     },
   },
 };
+
+const raftDocs = require('./raft.openapi');
+openapi.tags.push(...raftDocs.tags);
+Object.assign(openapi.paths, raftDocs.paths);
+Object.assign(openapi.components.schemas, raftDocs.schemas);
+Object.assign(openapi.components.securitySchemes, raftDocs.securitySchemes);
+
+module.exports = openapi;

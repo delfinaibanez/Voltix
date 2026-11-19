@@ -6,6 +6,7 @@ const requestLogger = require('./middlewares/requestLogger');
 const { notFound, errorHandler } = require('./middlewares/errorHandler');
 const healthRoutes = require('./routes/health.routes');
 const stockRoutes = require('./routes/stock.routes');
+const raftRoutes = require('./routes/raft.routes');
 
 function createApp() {
   const app = express();
@@ -22,6 +23,7 @@ function createApp() {
   app.get('/api-docs.json', (req, res) => res.json(openapi));
 
   app.use('/api/stock', stockRoutes);
+  app.use('/raft', raftRoutes);
 
   app.use(notFound);
   app.use(errorHandler);
