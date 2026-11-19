@@ -192,8 +192,10 @@ Esperar hasta que todos los servicios muestren `(healthy)` en la columna STATUS 
 ```powershell
 docker compose exec auth-service node src/seed.js
 docker compose exec catalog-service node src/seed.js
-1..3 | ForEach-Object { docker compose exec "inventory-$_" node src/seed.js }
+docker compose exec inventory-1 node src/seed.js
 ```
+
+El seed de inventario se corre **una sola vez**: con Raft activo carga el stock a través del líder (si `inventory-1` no es el líder, el seed sigue la redirección) y la escritura se replica a los 3 nodos.
 
 **5. Probar.** Abrir en el navegador (aceptar la advertencia del certificado autofirmado):
 
@@ -257,9 +259,41 @@ node scripts/pruebas/tp07-seguridad.js
 - Healthchecks en MongoDB y Redis, y `depends_on` con `condition: service_healthy`: cada servicio arranca recién cuando sus dependencias están sanas.
 - Certificados montados de solo lectura desde `./certs`.
 
+## Consenso Raft en inventory-service (TP4)
+
+Los 3 nodos de inventario (`inventory-1`, `inventory-2`, `inventory-3`) forman un cluster Raft: eligen un líder, replican el log de escrituras y aplican cada una recién cuando la confirma la mayoría (2 de 3). Auth y los demás servicios no participan; el cluster usa su propio secreto (`RAFT_TOKEN`, distinto de `JWT_SECRET`).
+
+- **Escrituras de stock** (`PUT`, `reserve`, `release`): solo las atiende el líder. Un follower responde `307` con el header `Location` hacia el líder; `orders-service` sigue esa redirección solo, por la red interna.
+- **Lecturas**: cada nodo responde con sus datos locales.
+- **Redis** sigue siendo el lock por producto; Raft ordena y confirma las escrituras.
+- **Estado del cluster** (público): `GET /raft/status` en cada nodo.
+
+```powershell
+curl.exe -k https://localhost:4002/raft/status
+curl.exe -k https://localhost:4012/raft/status
+curl.exe -k https://localhost:4022/raft/status
+```
+
+Tiene que haber un solo `LEADER` y los tres con el mismo `term` y `leaderId`.
+
+**Demo de caída del líder:**
+
+```powershell
+docker stop voltix-inventory-2-1    # el contenedor del líder actual
+Start-Sleep -Seconds 4
+curl.exe -k https://localhost:4002/raft/status    # un nodo nuevo es LEADER, con term mayor
+docker start voltix-inventory-2-1   # vuelve como FOLLOWER y se pone al día
+```
+
+Con el líder caído quedan 2 de 3 nodos (hay quórum) y el sistema sigue aceptando pedidos. Si caen 2 nodos, las escrituras responden `503` hasta que vuelva el quórum, pero no se pierde ni se duplica nada.
+
+Variables en `inventory-service/.env.docker` (ver `.env.docker.example`): `RAFT_ENABLED`, `RAFT_PEERS`, `RAFT_PUBLIC_URLS`, `RAFT_TOKEN` y los tiempos `RAFT_*_MS`. Con `RAFT_ENABLED=false` el servicio funciona como nodo único.
+
 ## Demo de condición de carrera (TP2)
 
 `inventory-service/scripts/race-demo.js` dispara N reservas simultáneas contra un producto con poco stock.
+
+> **La demo de carrera se hace con Raft apagado** (`RAFT_ENABLED=false` junto con `LOCK_ENABLED` y `DEMO_DELAY_MS`): con Raft activo las escrituras se aplican en orden y la sobreventa no se puede reproducir. Después de la demo, volver a `RAFT_ENABLED=true`, recrear los contenedores (`docker compose up -d --force-recreate`) y volver a correr `docker compose exec inventory-1 node src/seed.js` para que el stock vuelva a quedar igual en los 3 nodos.
 
 1. **Sin lock:** en el `.env` (o `.env.docker`) de inventario poner `LOCK_ENABLED=false` y `DEMO_DELAY_MS=200`, y reiniciar el servicio. Resultado: se aceptan más reservas que el stock (sobreventa).
 2. **Con lock:** `LOCK_ENABLED=true` (con el mismo `DEMO_DELAY_MS=200`), reiniciar. Resultado: se aceptan exactamente tantas reservas como stock; el resto recibe 409.
