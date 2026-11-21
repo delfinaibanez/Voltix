@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
-const RESERVATION_STATUS = ['RESERVED', 'RELEASED'];
+// PENDING: reserva registrada pero todavía sin confirmar (estado transitorio mientras se descuenta el stock).
+const RESERVATION_STATUS = ['PENDING', 'RESERVED', 'RELEASED'];
 
 // Reserva de stock hecha por una orden. Hay como máximo una por (orderId, productId):
 // eso es lo que hace idempotente a POST /reserve.
