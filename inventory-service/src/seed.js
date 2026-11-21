@@ -6,9 +6,8 @@
 //   - RAFT_ENABLED=false (nodo único): escribe con applyCommand (SET_STOCK) en la base local.
 //   - RAFT_ENABLED=true (cluster):     el stock se carga por la API del líder (PUT /api/stock/:id),
 //     así la escritura pasa por Raft y llega a los 3 nodos. Hay que correrlo con el cluster
-//     levantado; el seed firma un token ADMIN con JWT_SECRET (o usa SEED_TOKEN si está definido).
+//     y auth-service levantados; el token ADMIN lo emite auth-service (login del ADMIN del seed).
 const mongoose = require('mongoose');
-const jwt = require('jsonwebtoken');
 const config = require('./config/env');
 const logger = require('./utils/logger');
 const { connectWithRetry } = require('./config/db');
@@ -38,18 +37,28 @@ async function seedDirect(products) {
   return { created, updated };
 }
 
-function adminToken() {
+// El token ADMIN se pide a auth-service con el login del usuario ADMIN del seed de Auth:
+// inventory-service no firma tokens, la emisión de credenciales queda centralizada en Auth.
+// (SEED_TOKEN permite pasar un token ya emitido.)
+async function adminToken() {
   if (process.env.SEED_TOKEN) return process.env.SEED_TOKEN;
-  const secret = process.env.JWT_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error('Con Raft activo el seed necesita JWT_SECRET (32+ caracteres) o SEED_TOKEN en el entorno');
+
+  const authUrl = (process.env.AUTH_SERVICE_URL || '').replace(/\/+$/, '');
+  const { SEED_ADMIN_EMAIL: email, SEED_ADMIN_PASSWORD: password } = process.env;
+  if (!authUrl || !email || !password) {
+    throw new Error('Con Raft activo el seed necesita AUTH_SERVICE_URL, SEED_ADMIN_EMAIL y SEED_ADMIN_PASSWORD (el ADMIN de auth-service)');
   }
-  return jwt.sign({ role: 'ADMIN' }, secret, {
-    algorithm: 'HS256',
-    subject: 'seed-inventory',
-    issuer: process.env.JWT_ISSUER || 'voltix-auth-service',
-    expiresIn: '10m',
+
+  const response = await fetch(`${authUrl}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
   });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.accessToken) {
+    throw new Error(`No se pudo iniciar sesión como ADMIN en auth-service (${response.status}). ¿Corriste antes el seed de auth?`);
+  }
+  return body.accessToken;
 }
 
 // Prueba los nodos de RAFT_PEERS hasta dar con el líder: un follower responde 307
@@ -91,7 +100,7 @@ async function putStockThroughLeader(productId, token) {
 }
 
 async function seedThroughRaft(products) {
-  const token = adminToken();
+  const token = await adminToken();
   let created = 0;
   let updated = 0;
   for (const product of products) {

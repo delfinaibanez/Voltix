@@ -7,6 +7,7 @@ const router = Router();
 
 router.post('/register', controller.register); // público
 router.post('/login', controller.login); // público
+router.post('/service-token', controller.serviceToken); // solo servicios con su secreto (orders-service)
 router.get('/me', authenticate, controller.me); // cualquier usuario autenticado
 router.get('/users', authenticate, authorize('ADMIN'), controller.listUsers); // solo ADMIN
 

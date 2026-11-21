@@ -1,5 +1,5 @@
 const authService = require('../services/auth.service');
-const { validateRegister, validateLogin } = require('../utils/validators');
+const { validateRegister, validateLogin, validateServiceToken } = require('../utils/validators');
 
 // Express 5 captura automáticamente los errores de handlers async.
 
@@ -14,6 +14,11 @@ async function login(req, res) {
   res.json(await authService.login(credentials));
 }
 
+async function serviceToken(req, res) {
+  const credentials = validateServiceToken(req.body);
+  res.json(await authService.issueServiceToken(credentials));
+}
+
 async function me(req, res) {
   res.json(await authService.getProfile(req.user.id));
 }
@@ -22,4 +27,4 @@ async function listUsers(req, res) {
   res.json({ data: await authService.listUsers() });
 }
 
-module.exports = { register, login, me, listUsers };
+module.exports = { register, login, serviceToken, me, listUsers };

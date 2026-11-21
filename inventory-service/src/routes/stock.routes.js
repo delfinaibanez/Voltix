@@ -6,14 +6,17 @@ const authorize = require('../middlewares/authorize');
 
 const router = Router();
 
-// Todas las rutas exigen token válido (401). orders-service reenvía el token
-// del usuario, así que reservar y liberar lo pueden hacer USER o ADMIN.
-// Ajustar stock directamente (PUT) es solo ADMIN (403).
+// Todas las rutas exigen token válido (401).
+//   - Consultar stock (GET): cualquier identidad autenticada.
+//   - Ajustar stock (PUT): solo ADMIN.
+//   - Reservar / liberar: operaciones internas, solo la identidad técnica de
+//     orders-service (rol SERVICE, emitida por auth-service). Un USER o un ADMIN
+//     que las llame directo recibe 403: así no se saltea las reglas de Órdenes.
 router.use(authenticate);
 
 router.get('/:productId', validateProductId, controller.getStock);
 router.put('/:productId', authorize('ADMIN'), validateProductId, controller.setStock);
-router.post('/:productId/reserve', authorize('USER', 'ADMIN'), validateProductId, controller.reserve);
-router.post('/:productId/release', authorize('USER', 'ADMIN'), validateProductId, controller.release);
+router.post('/:productId/reserve', authorize('SERVICE'), validateProductId, controller.reserve);
+router.post('/:productId/release', authorize('SERVICE'), validateProductId, controller.release);
 
 module.exports = router;
