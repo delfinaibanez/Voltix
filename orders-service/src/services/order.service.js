@@ -4,6 +4,7 @@ const catalog = require('../clients/catalog.client');
 const inventory = require('../clients/inventory.client');
 const AppError = require('../utils/appError');
 const logger = require('../utils/logger');
+const reconciliation = require('./reconciliation.service');
 
 const isAdmin = (identity) => identity.role === 'ADMIN';
 // Tras estos errores no se sabe si inventory llegó a aplicar la reserva.
@@ -25,7 +26,7 @@ async function resolveLines(items, authorization) {
 }
 
 // Compensación: libera las reservas ya hechas. Nunca lanza: si una liberación falla
-// queda registrada (orderId + productId) para poder conciliarla a mano.
+// se guarda como pendiente y la reconciliación automática la reintenta hasta lograrla.
 async function releaseAll(orderId, productIds, reason) {
   for (const productId of [...productIds].reverse()) {
     try {
@@ -40,6 +41,7 @@ async function releaseAll(orderId, productIds, reason) {
         status: err.statusCode,
         cause: err.message,
       });
+      await reconciliation.enqueue({ orderId, productId, reason, cause: err.message });
     }
   }
 }
