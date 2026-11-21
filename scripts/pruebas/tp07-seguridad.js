@@ -92,6 +92,15 @@ const { cfg } = c;
   res = await c.call(cfg.inventory, 'PUT', `/api/stock/${productId}`, { token: userToken, body: { available: 10 } });
   r.check('H', 'USER intenta operación de ADMIN (PUT /api/stock/:id)', 403, res.status);
 
+  // ---- H.2: operaciones internas de inventario (reserve/release) NO las puede hacer un USER directo
+  const direct = { orderId: c.newId(), quantity: 1 };
+  res = await c.call(cfg.inventory, 'POST', `/api/stock/${productId}/reserve`, { token: userToken, body: direct });
+  r.check('H.2', 'USER reserva stock directo en inventory (saltea Órdenes)', 403, res.status);
+  res = await c.call(cfg.inventory, 'POST', `/api/stock/${productId}/release`, { token: userToken, body: { orderId: direct.orderId } });
+  r.check('H.3', 'USER libera stock directo en inventory', 403, res.status);
+  res = await c.call(cfg.inventory, 'POST', `/api/stock/${productId}/reserve`, { body: direct });
+  r.check('H.4', 'Reservar sin token', 401, res.status);
+
   // ---- I: rol autorizado
   let adminToken = null;
   if (cfg.adminEmail && cfg.adminPassword) {
@@ -105,6 +114,31 @@ const { cfg } = c;
     res = await c.call(cfg.inventory, 'PUT', `/api/stock/${productId}`, { token: adminToken, body: { available: 50 } });
     r.check('I', 'ADMIN ejecuta PUT /api/stock/:id', [200, 201], res.status);
   } else r.skip('I', 'Rol autorizado', 'definí ADMIN_EMAIL/ADMIN_PASSWORD o JWT_SECRET');
+  if (adminToken) {
+    res = await c.call(cfg.inventory, 'POST', `/api/stock/${productId}/reserve`, { token: adminToken, body: direct });
+    r.check('I.3', 'ADMIN reserva stock directo en inventory (tampoco: solo orders-service)', 403, res.status);
+    res = await c.call(cfg.inventory, 'POST', `/api/stock/${productId}/release`, { token: adminToken, body: { orderId: direct.orderId } });
+    r.check('I.4', 'ADMIN libera stock directo en inventory', 403, res.status);
+  }
+
+  // ---- I.5: identidad técnica de orders-service (emitida por Auth con el secreto del servicio)
+  res = await c.call(cfg.auth, 'POST', '/auth/service-token', { body: { clientId: 'orders-service', clientSecret: 'secreto-incorrecto' } });
+  r.check('I.5', 'Pedir token de servicio con secreto incorrecto', 401, res.status);
+  if (process.env.SERVICE_CLIENT_SECRET) {
+    res = await c.call(cfg.auth, 'POST', '/auth/service-token', { body: { clientId: 'orders-service', clientSecret: process.env.SERVICE_CLIENT_SECRET } });
+    const svcToken = c.extractToken(res.body);
+    const svcClaims = svcToken ? c.decodeJwt(svcToken) : null;
+    r.check('I.6', 'orders-service obtiene su token (rol SERVICE, sub orders-service)', 200, res.status,
+      svcClaims?.role === 'SERVICE' && svcClaims?.sub === 'orders-service', 'claims inesperados');
+    res = await c.call(cfg.inventory, 'PUT', `/api/stock/${productId}`, { token: svcToken, body: { available: 50 } });
+    r.check('I.7', 'El token de servicio no puede ajustar stock (PUT es solo ADMIN)', 403, res.status);
+    res = await c.call(cfg.orders, 'GET', '/api/orders', { token: svcToken });
+    r.check('I.8', 'El token de servicio no sirve como usuario en orders', 401, res.status);
+    res = await c.call(cfg.inventory, 'POST', `/api/stock/${productId}/reserve`, { token: svcToken, body: direct });
+    r.check('I.9', 'El token de servicio SÍ puede reservar', [200, 201], res.status);
+    res = await c.call(cfg.inventory, 'POST', `/api/stock/${productId}/release`, { token: svcToken, body: { orderId: direct.orderId } });
+    r.check('I.10', 'El token de servicio SÍ puede liberar (deja el stock como estaba)', 200, res.status);
+  } else r.skip('I.6', 'Token de servicio', 'definí SERVICE_CLIENT_SECRET (el de orders-service/.env.docker) para probar I.6 a I.10');
   res = await c.call(cfg.orders, 'POST', '/api/orders', { token: userToken, body: orderBody(1) });
   r.check('I.2', 'USER crea una orden (rol autorizado en orders)', 201, res.status);
   const firstOrderId = res.body?.id;

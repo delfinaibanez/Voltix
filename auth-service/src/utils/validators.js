@@ -69,4 +69,17 @@ function validateLogin(body) {
   return { email: body.email.trim().toLowerCase(), password: body.password };
 }
 
-module.exports = { isObjectId, validateRegister, validateLogin };
+function validateServiceToken(body) {
+  ensureObject(body);
+  const details = [];
+  rejectUnknownFields(body, ['clientId', 'clientSecret'], details);
+  for (const field of ['clientId', 'clientSecret']) {
+    if (typeof body[field] !== 'string' || body[field] === '') {
+      details.push({ field, message: `${field} es obligatorio` });
+    }
+  }
+  if (details.length > 0) throw AppError.badRequest('Datos inválidos', details);
+  return { clientId: body.clientId, clientSecret: body.clientSecret };
+}
+
+module.exports = { isObjectId, validateRegister, validateLogin, validateServiceToken };

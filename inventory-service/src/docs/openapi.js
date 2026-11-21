@@ -177,7 +177,7 @@ const openapi = {
     '/api/stock/{productId}/reserve': {
       post: {
         tags: ['Reservas'],
-        summary: 'Reservar stock para una orden (USER o ADMIN)',
+        summary: 'Reservar stock para una orden (solo orders-service, rol SERVICE)',
         description:
           'Descuenta "quantity" de available y lo suma a reserved. Idempotente por (orderId, productId): ' +
           'repetir la misma reserva devuelve 200 con la reserva existente sin descontar de nuevo.',
@@ -217,7 +217,7 @@ const openapi = {
     '/api/stock/{productId}/release': {
       post: {
         tags: ['Reservas'],
-        summary: 'Liberar la reserva de una orden (USER o ADMIN)',
+        summary: 'Liberar la reserva de una orden (solo orders-service, rol SERVICE)',
         description:
           'Devuelve las unidades reservadas a available. Idempotente: liberar una reserva ya liberada responde 200 sin devolver stock otra vez.',
         security: [{ bearerAuth: [] }],

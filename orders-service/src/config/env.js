@@ -26,6 +26,12 @@ if (jwtSecret.length < 32 || jwtSecret.startsWith('CAMBIAR')) {
   );
 }
 
+// Identidad técnica de orders-service: con ella reserva y libera stock en inventory.
+const serviceSecret = process.env.SERVICE_CLIENT_SECRET || '';
+if (serviceSecret.length < 32) {
+  throw new Error('SERVICE_CLIENT_SECRET es obligatorio (32+ caracteres, el mismo de SERVICE_CLIENTS en auth-service)');
+}
+
 const config = {
   serviceName: process.env.SERVICE_NAME || 'orders-service',
   env: process.env.NODE_ENV || 'development',
@@ -49,6 +55,7 @@ const config = {
   services: {
     catalogUrls: toUrlList(process.env.CATALOG_SERVICE_URL),
     inventoryUrls: toUrlList(process.env.INVENTORY_SERVICE_URL),
+    authUrls: toUrlList(process.env.AUTH_SERVICE_URL),
     timeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 2000),
     // Tras agotar todos los nodos de una dependencia, durante esta ventana (ms) las nuevas
     // llamadas fallan al instante con 503 (evita reintentar nodo por nodo en la compensación).
@@ -60,6 +67,11 @@ const config = {
     secret: jwtSecret,
     algorithm: 'HS256', // se fija explícitamente al verificar
     issuer: process.env.JWT_ISSUER || 'voltix-auth-service',
+  },
+
+  serviceIdentity: {
+    clientId: process.env.SERVICE_CLIENT_ID || 'orders-service',
+    clientSecret: serviceSecret,
   },
 
   log: {

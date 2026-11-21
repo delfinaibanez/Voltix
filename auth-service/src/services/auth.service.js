@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { User } = require('../models/user.model');
 const AppError = require('../utils/appError');
@@ -37,6 +38,22 @@ async function login({ email, password }) {
   return { accessToken: token, tokenType: 'Bearer', expiresIn };
 }
 
+// Comparación en tiempo constante (se comparan hashes para que el largo no filtre información).
+const sha256 = (value) => crypto.createHash('sha256').update(String(value)).digest();
+
+// Emite el token técnico de un servicio (p. ej. orders-service) a cambio de su secreto.
+async function issueServiceToken({ clientId, clientSecret }) {
+  const expected = Object.hasOwn(config.serviceClients, clientId) ? config.serviceClients[clientId] : null;
+  const matches = crypto.timingSafeEqual(sha256(clientSecret), sha256(expected ?? ''));
+  if (!expected || !matches) {
+    logger.warn('Token de servicio rechazado', { clientId });
+    throw new AppError(401, 'Credenciales de servicio inválidas');
+  }
+  const { token, expiresIn } = tokenService.signServiceToken(clientId);
+  logger.info('Token de servicio emitido', { clientId });
+  return { accessToken: token, tokenType: 'Bearer', expiresIn };
+}
+
 async function getProfile(userId) {
   const user = await User.findById(userId);
   if (!user || !user.active) throw new AppError(401, 'La identidad del token ya no es válida');
@@ -47,4 +64,4 @@ async function listUsers() {
   return User.find().sort({ createdAt: -1 }).limit(100);
 }
 
-module.exports = { register, login, getProfile, listUsers };
+module.exports = { register, login, issueServiceToken, getProfile, listUsers };

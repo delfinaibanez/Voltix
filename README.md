@@ -106,10 +106,12 @@ Nunca se escribe `localhost` fijo en el código: todas las URLs salen de variabl
 |---|---|---|---|
 | auth-service | `POST /auth/register`, `POST /auth/login` | `GET /auth/me` | `GET /auth/users` |
 | catalog-service | `GET /api/products`, `GET /api/products/:id` | | `POST`, `PUT`, `PATCH`, `DELETE /api/products...` |
-| inventory-service | | `GET /api/stock/:productId`, `POST .../reserve`, `POST .../release` | `PUT /api/stock/:productId` |
+| inventory-service | | `GET /api/stock/:productId` | `PUT /api/stock/:productId` |
 | orders-service | | todas (un USER solo ve y opera sus órdenes) | ver las órdenes de todos |
 
-`/health` y `/api-docs` son públicos en todos los servicios. orders-service reenvía el header `Authorization` del usuario cuando llama a catálogo e inventario.
+> `POST .../reserve` y `POST .../release` son **internos**: solo los acepta la identidad técnica de `orders-service` (rol `SERVICE`, token emitido por auth-service con `POST /auth/service-token`). Un USER o un ADMIN que los llame directo recibe `403`.
+
+`/health` y `/api-docs` son públicos en todos los servicios. orders-service reenvía el `Authorization` del usuario cuando llama a catálogo; para reservar y liberar stock en inventario usa su propia identidad técnica (rol `SERVICE`), que pide a auth-service con el secreto `SERVICE_CLIENT_SECRET`. Los tokens de servicio duran 5 minutos y orders los renueva solo.
 
 ## Requisitos
 
