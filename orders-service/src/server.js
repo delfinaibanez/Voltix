@@ -7,6 +7,8 @@ const config = require('./config/env');
 const logger = require('./utils/logger');
 const { connectWithRetry } = require('./config/db');
 const { Order } = require('./models/order.model');
+const { PendingRelease } = require('./models/pendingRelease.model');
+const reconciliation = require('./services/reconciliation.service');
 const createApp = require('./app');
 
 const servers = [];
@@ -36,7 +38,8 @@ function loadCertificate() {
 
 async function start() {
   await connectWithRetry();
-  await Order.init(); // crea los índices antes de recibir tráfico
+  await Promise.all([Order.init(), PendingRelease.init()]); // crea los índices antes de recibir tráfico
+  reconciliation.start(); // reintenta las liberaciones de stock pendientes (también las de antes de un reinicio)
 
   const app = createApp();
 
@@ -53,6 +56,7 @@ async function start() {
 
 async function shutdown(signal) {
   logger.info('Apagando servicio', { signal });
+  reconciliation.stop();
   await Promise.all(servers.map((s) => new Promise((resolve) => s.close(resolve))));
   await mongoose.disconnect();
   process.exit(0);

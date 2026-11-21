@@ -69,6 +69,13 @@ const config = {
     issuer: process.env.JWT_ISSUER || 'voltix-auth-service',
   },
 
+  // Reconciliación de liberaciones de stock que fallaron (TP6).
+  reconciliation: {
+    enabled: toBool(process.env.RECONCILIATION_ENABLED, true),
+    intervalMs: toInt(process.env.RECONCILIATION_INTERVAL_MS, 5000),
+    batchSize: toInt(process.env.RECONCILIATION_BATCH_SIZE, 50),
+  },
+
   serviceIdentity: {
     clientId: process.env.SERVICE_CLIENT_ID || 'orders-service',
     clientSecret: serviceSecret,
