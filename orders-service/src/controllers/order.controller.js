@@ -22,7 +22,7 @@ async function getById(req, res) {
 }
 
 async function cancel(req, res) {
-  const order = await orderService.cancelOrder(getIdentity(req), req.params.id, req.headers.authorization);
+  const order = await orderService.cancelOrder(getIdentity(req), req.params.id);
   logger.info('Orden cancelada', { orderId: order.id, userId: order.userId });
   res.json(order);
 }

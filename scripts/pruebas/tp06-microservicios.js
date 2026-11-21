@@ -25,6 +25,8 @@ const { cfg } = c;
   const userToken = c.signJwt({ sub: 'tp06-usuario', role: 'USER' });
   const adminToken = c.signJwt({ sub: 'tp06-admin', role: 'ADMIN' });
   const U = { token: userToken };
+  // reserve/release son internos: los hace la identidad técnica de orders-service (rol SERVICE).
+  const S = { token: c.signJwt({ sub: 'orders-service', role: 'SERVICE' }) };
 
   // ---------- HEALTH ----------
   for (const [name, base] of [['catalog-service', cfg.catalog], ['inventory-service', cfg.inventory],
@@ -63,19 +65,19 @@ const { cfg } = c;
   r.check('CRUD-INV', 'GET /api/stock/:id', 200, res.status, res.body?.available === 40, 'available≠40');
 
   const o1 = c.newId();
-  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/reserve`, { ...U, body: { orderId: o1, quantity: 3 } });
+  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/reserve`, { ...S, body: { orderId: o1, quantity: 3 } });
   r.check('CRUD-INV', 'POST reserve', 201, res.status, res.body?.status === 'RESERVED', 'status≠RESERVED');
-  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/reserve`, { ...U, body: { orderId: o1, quantity: 3 } });
+  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/reserve`, { ...S, body: { orderId: o1, quantity: 3 } });
   r.check('CRUD-INV', 'POST reserve repetido (idempotente)', 200, res.status, res.body?.status === 'RESERVED');
-  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/reserve`, { ...U, body: { orderId: c.newId(), quantity: 9999 } });
+  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/reserve`, { ...S, body: { orderId: c.newId(), quantity: 9999 } });
   r.check('CRUD-INV', 'POST reserve con stock insuficiente', 409, res.status);
-  res = await c.call(cfg.inventory, 'POST', `/api/stock/${c.ZERO_ID}/reserve`, { ...U, body: { orderId: c.newId(), quantity: 1 } });
+  res = await c.call(cfg.inventory, 'POST', `/api/stock/${c.ZERO_ID}/reserve`, { ...S, body: { orderId: c.newId(), quantity: 1 } });
   r.check('CRUD-INV', 'POST reserve de producto sin stock cargado', 404, res.status);
-  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/reserve`, { ...U, body: { orderId: c.newId(), quantity: 0 } });
+  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/reserve`, { ...S, body: { orderId: c.newId(), quantity: 0 } });
   r.check('CRUD-INV', 'POST reserve con quantity inválida', 400, res.status);
-  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/release`, { ...U, body: { orderId: o1 } });
+  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/release`, { ...S, body: { orderId: o1 } });
   r.check('CRUD-INV', 'POST release', 200, res.status, res.body?.status === 'RELEASED', 'status≠RELEASED');
-  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/release`, { ...U, body: { orderId: c.newId() } });
+  res = await c.call(cfg.inventory, 'POST', `/api/stock/${P.id}/release`, { ...S, body: { orderId: c.newId() } });
   r.check('CRUD-INV', 'POST release de reserva inexistente', 404, res.status);
 
   // ---------- CRUD órdenes + COMUNICACIÓN ----------

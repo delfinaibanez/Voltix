@@ -2,7 +2,7 @@ const AppError = require('../utils/appError');
 const logger = require('../utils/logger');
 const { verifyAccessToken } = require('../services/token.service');
 
-const VALID_ROLES = ['USER', 'ADMIN'];
+const VALID_ROLES = ['USER', 'ADMIN', 'SERVICE'];
 
 // Exige Authorization: Bearer <token>. Sin token, mal formado, firma inválida
 // o vencido -> 401. Si es válido deja la identidad en req.user.

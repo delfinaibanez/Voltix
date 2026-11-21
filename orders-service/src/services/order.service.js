@@ -26,10 +26,10 @@ async function resolveLines(items, authorization) {
 
 // Compensación: libera las reservas ya hechas. Nunca lanza: si una liberación falla
 // queda registrada (orderId + productId) para poder conciliarla a mano.
-async function releaseAll(orderId, productIds, authorization, reason) {
+async function releaseAll(orderId, productIds, reason) {
   for (const productId of [...productIds].reverse()) {
     try {
-      await inventory.release(productId, orderId, authorization);
+      await inventory.release(productId, orderId);
       logger.info('Reserva liberada (compensación)', { orderId, productId, reason });
     } catch (err) {
       if (err.statusCode === 404) continue; // nunca llegó a reservarse
@@ -56,7 +56,7 @@ async function createOrder(identity, items, authorization) {
     for (const line of lines) {
       inFlight = line.productId;
       try {
-        await inventory.reserve(line.productId, { orderId, quantity: line.quantity }, authorization);
+        await inventory.reserve(line.productId, { orderId, quantity: line.quantity });
       } catch (err) {
         if (err.statusCode === 409) {
           throw AppError.conflict(`${err.message} (producto ${line.productId})`, err.details);
@@ -77,7 +77,7 @@ async function createOrder(identity, items, authorization) {
       status: err.statusCode,
       toRelease: toRelease.length,
     });
-    await releaseAll(orderId, toRelease, authorization, 'create-failed');
+    await releaseAll(orderId, toRelease, 'create-failed');
     throw err;
   }
 }
@@ -104,7 +104,7 @@ async function getAccessibleOrder(identity, id) {
   return order;
 }
 
-async function cancelOrder(identity, id, authorization) {
+async function cancelOrder(identity, id) {
   const order = await getAccessibleOrder(identity, id);
   if (order.status === 'CANCELLED') throw AppError.conflict(`La orden ${id} ya estaba cancelada`);
 
@@ -112,7 +112,7 @@ async function cancelOrder(identity, id, authorization) {
   // puede reintentar (release es idempotente en inventory).
   for (const item of order.items) {
     try {
-      await inventory.release(item.productId, id, authorization);
+      await inventory.release(item.productId, id);
     } catch (err) {
       if (err.statusCode !== 404) throw err;
       logger.warn('Cancelación: no había reserva para liberar', { orderId: id, productId: item.productId });

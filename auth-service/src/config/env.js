@@ -16,6 +16,24 @@ if (jwtSecret.length < 32 || jwtSecret.startsWith('CAMBIAR')) {
   );
 }
 
+// Identidades técnicas (servicio a servicio). Formato: "orders-service=<secreto>[,otro=<secreto>]".
+// Cada secreto debe tener 32+ caracteres. Solo auth-service los conoce junto con el servicio dueño.
+const serviceClients = Object.fromEntries(
+  (process.env.SERVICE_CLIENTS || '')
+    .split(',')
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const i = pair.indexOf('=');
+      return [pair.slice(0, i).trim(), pair.slice(i + 1).trim()];
+    }),
+);
+if (Object.keys(serviceClients).length === 0 || Object.values(serviceClients).some((s) => s.length < 32)) {
+  throw new Error(
+    'SERVICE_CLIENTS es obligatorio: "orders-service=<secreto de 32+ caracteres>" (ver .env.example)',
+  );
+}
+
 const config = {
   serviceName: process.env.SERVICE_NAME || 'auth-service',
   env: process.env.NODE_ENV || 'development',
@@ -40,7 +58,11 @@ const config = {
     algorithm: 'HS256', // firma simétrica; se fija explícitamente al firmar y al verificar
     expiresIn: process.env.JWT_EXPIRES_IN || '1h',
     issuer: process.env.JWT_ISSUER || 'voltix-auth-service',
+    // Los tokens de servicio duran poco: el servicio los renueva solo.
+    serviceExpiresIn: process.env.SERVICE_TOKEN_EXPIRES_IN || '5m',
   },
+
+  serviceClients,
 
   bcryptRounds: toInt(process.env.BCRYPT_ROUNDS, 12),
 
