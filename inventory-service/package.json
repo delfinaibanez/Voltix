@@ -8,6 +8,7 @@
     "dev": "nodemon src/server.js",
     "seed": "node src/seed.js",
     "race-demo": "node scripts/race-demo.js",
+    "test:recovery": "node --test test/stock.commands.recovery.test.js",
     "test:raft": "node --test test/raft.cluster.test.js test/raft.transport.test.js"
   },
   "keywords": [],

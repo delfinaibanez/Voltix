@@ -229,15 +229,22 @@ Los scripts de `scripts/pruebas` usan HTTP local por defecto. Contra Docker hay 
 
 ```powershell
 $env:CATALOG_URL   = "https://localhost:4001"
-$env:INVENTORY_URL = "https://localhost:4002"
+$env:INVENTORY_URL = "https://localhost:4002"   # tiene que ser el LÍDER de Raft (ver abajo)
 $env:ORDERS_URL    = "https://localhost:4003"
 $env:AUTH_URL      = "https://localhost:4004"
-$env:SVC_INVENTORY = "inventory-1"
+$env:SVC_INVENTORY = "inventory-1,inventory-2,inventory-3"  # la prueba de caída detiene los 3 nodos
 $env:NODE_EXTRA_CA_CERTS = "$PWD\certs\server.crt"
 $env:JWT_SECRET    = "<el secreto del grupo>"
 
 node scripts/pruebas/tp06-microservicios.js
 node scripts/pruebas/tp07-seguridad.js
+```
+
+`INVENTORY_URL` tiene que apuntar al **líder** de Raft: si apunta a un follower, este redirige la escritura al líder y la redirección pierde el token (da 401). El líder cambia cuando se reinician nodos; para encontrarlo:
+
+```powershell
+$leader = foreach ($p in 4002,4012,4022) { $s = curl.exe -k -s https://localhost:$p/raft/status | ConvertFrom-Json; if ($s.role -eq 'LEADER') { $p } }
+$env:INVENTORY_URL = "https://localhost:$leader"
 ```
 
 ### Problemas comunes
@@ -313,7 +320,7 @@ En Docker, desde adentro del contenedor:
 docker compose exec inventory-1 node scripts/race-demo.js --url http://localhost:3000 --product <productId> --token <jwt-admin>
 ```
 
-El script necesita un token de ADMIN: `--token <jwt>` (se obtiene con `POST /auth/login`).
+El script necesita dos tokens: `--token <jwt>` de ADMIN (se obtiene con `POST /auth/login`) para fijar el stock y `--service-token <jwt>` (rol SERVICE, el de `orders-service`) para reservar, porque reservar es una operación interna.
 
 ## Forma de trabajo
 
