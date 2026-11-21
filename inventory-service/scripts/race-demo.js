@@ -17,7 +17,9 @@
 //   --n        reservas simultáneas    (default: 20)
 //   --stock    stock inicial           (default: 5)
 //   --qty      unidades por reserva    (default: 1)
-//   --token    JWT de ADMIN            (default: TOKEN; necesario cuando auth esté activo)
+//   --token    JWT de ADMIN            (default: TOKEN; fija el stock inicial)
+//   --service-token  JWT de servicio (rol SERVICE, el de orders-service) para reservar
+//                                      (default: SERVICE_TOKEN; reservar es una operación interna)
 //   --label    texto para identificar la corrida en la salida
 
 const args = Object.fromEntries(
@@ -33,6 +35,7 @@ const N = Number(args.n || 20);
 const INITIAL_STOCK = Number(args.stock || 5);
 const QTY = Number(args.qty || 1);
 const TOKEN = args.token || process.env.TOKEN;
+const SERVICE_TOKEN = args['service-token'] || process.env.SERVICE_TOKEN || TOKEN;
 const LABEL = args.label || '';
 
 if (!/^[0-9a-fA-F]{24}$/.test(PRODUCT_ID || '')) {
@@ -40,10 +43,11 @@ if (!/^[0-9a-fA-F]{24}$/.test(PRODUCT_ID || '')) {
   process.exit(1);
 }
 
-const headers = { 'Content-Type': 'application/json' };
-if (TOKEN) headers.Authorization = `Bearer ${TOKEN}`;
-
-async function call(method, path, body) {
+// Cada llamada usa el token que le corresponde: ADMIN para fijar/consultar stock,
+// SERVICE para reservar.
+async function call(method, path, body, token = TOKEN) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers,
@@ -67,7 +71,7 @@ async function main() {
   const started = Date.now();
   const results = await Promise.all(
     Array.from({ length: N }, (_, i) =>
-      call('POST', `/api/stock/${PRODUCT_ID}/reserve`, { orderId: `demo-${runId}-${i + 1}`, quantity: QTY }),
+      call('POST', `/api/stock/${PRODUCT_ID}/reserve`, { orderId: `demo-${runId}-${i + 1}`, quantity: QTY }, SERVICE_TOKEN),
     ),
   );
   const elapsed = Date.now() - started;

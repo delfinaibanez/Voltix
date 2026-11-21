@@ -30,6 +30,10 @@ const stockSchema = new mongoose.Schema(
       validate: integer('reserved'),
       default: 0,
     },
+    // Marcas internas de operaciones ya aplicadas a este stock ("reserve:<orderId>",
+    // "release:<orderId>"). Permiten reintentar una operación cortada a la mitad sin
+    // descontar dos veces. Viven pocos milisegundos: se borran al terminar la operación.
+    appliedOps: { type: [String], default: [], select: false },
   },
   {
     timestamps: true,

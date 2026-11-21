@@ -152,7 +152,13 @@ const { cfg } = c;
       try { c.sh(`docker compose start ${c.svcList(svc).join(' ')}`); } catch { /* ya se informa abajo */ }
     }
     const up = await c.waitHealth(base);
+    // Con inventory (cluster Raft) recién reiniciado, hasta que se elige líder las escrituras
+    // dan 503. orders-service no reintenta solo: el cliente reintenta, hasta ~40 s.
     res = await c.call(cfg.orders, 'POST', '/api/orders', { ...U, body: body([{ productId: P.id, quantity: 1 }]) });
+    for (let i = 0; i < 20 && res.status === 503; i += 1) {
+      await c.sleep(2000);
+      res = await c.call(cfg.orders, 'POST', '/api/orders', { ...U, body: body([{ productId: P.id, quantity: 1 }]) });
+    }
     r.check('FALLO', `${name} reiniciado: el caso de uso se recupera`, 201, res.status, up, 'el servicio no volvió a estar saludable');
     if (res.body?.id) await c.call(cfg.orders, 'POST', `/api/orders/${res.body.id}/cancel`, U);
   }
