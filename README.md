@@ -4,6 +4,12 @@ Tienda online de accesorios de computación construida como un sistema de **micr
 
 Cada servicio es independiente: tiene su propio `package.json`, su propia base MongoDB y se comunica con los demás por HTTP. La autenticación usa JWT firmado por `auth-service` y validado localmente por cada servicio.
 
+## Documentación y evidencias
+
+- **Análisis y diseño (TP5):** [`docs/TP5-analisis-y-diseno.md`](docs/TP5-analisis-y-diseno.md): inventario de funcionalidades, acoplamientos, fichas de servicio, matrices de propiedad de datos y de comunicación, casos de uso distribuidos, checklist de límites y trazabilidad.
+- **Evidencias de ejecución (TP4, TP6 y TP7):** [`docs/evidencias/README.md`](docs/evidencias/README.md): índice con la salida real de cada corrida (Raft, failover, persistencia, reconciliación y seguridad).
+- **Scripts de prueba:** [`scripts/pruebas/README.md`](scripts/pruebas/README.md): cómo correr las pruebas de TP6 y TP7 contra Docker Compose.
+
 ## Arquitectura
 
 ```mermaid
@@ -48,6 +54,8 @@ Voltix/
 ├── inventory-service/   + scripts/race-demo.js
 ├── orders-service/
 ├── scripts/gen-certs.ps1   certificado HTTPS autofirmado
+├── scripts/pruebas/        pruebas de TP6 y TP7 contra Docker
+├── docs/                   documento de TP5 y docs/evidencias (salidas de las corridas)
 └── docker-compose.yml
 ```
 
@@ -89,6 +97,10 @@ Cada servicio tiene un `.env.example` (para correrlo en local) y un `.env.docker
 | `CATALOG_SERVICE_URL` | inventory, orders | URL de catalog-service. |
 | `INVENTORY_SERVICE_URL` | orders | URL de inventory-service; admite varias separadas por comas (3 nodos). |
 | `AUTH_SERVICE_URL` | orders | URL de auth-service. |
+| `SERVICE_CLIENTS` | auth | Credenciales de las identidades técnicas, formato `orders-service=<secreto>`. |
+| `SERVICE_CLIENT_ID`, `SERVICE_CLIENT_SECRET` | orders | Identidad técnica con la que orders pide su token de servicio (el secreto tiene que coincidir con `SERVICE_CLIENTS` de auth). |
+| `RECONCILIATION_ENABLED`, `RECONCILIATION_INTERVAL_MS`, `RECONCILIATION_BATCH_SIZE` | orders | Proceso que reintenta las liberaciones de stock pendientes hasta que inventario las confirma. |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | auth, inventory | Usuario ADMIN que crea el seed de auth; el seed de inventario inicia sesión con él por auth-service (no firma tokens por su cuenta). |
 | `REDIS_URL` | inventory | Redis para el lock distribuido. |
 | `LOCK_ENABLED` | inventory | `false` solo para la demo de condición de carrera. |
 | `LOCK_TTL_MS` | inventory | Vencimiento del lock (default 5000). |
@@ -235,10 +247,16 @@ $env:AUTH_URL      = "https://localhost:4004"
 $env:SVC_INVENTORY = "inventory-1,inventory-2,inventory-3"  # la prueba de caída detiene los 3 nodos
 $env:NODE_EXTRA_CA_CERTS = "$PWD\certs\server.crt"
 $env:JWT_SECRET    = "<el secreto del grupo>"
+$env:SERVICE_CLIENT_SECRET = "<el secreto de orders-service>"   # el de SERVICE_CLIENTS / orders .env.docker
+$env:ADMIN_EMAIL    = "<SEED_ADMIN_EMAIL de auth>"
+$env:ADMIN_PASSWORD = "<SEED_ADMIN_PASSWORD de auth>"
 
 node scripts/pruebas/tp06-microservicios.js
+node scripts/pruebas/tp06-persistencia.js
 node scripts/pruebas/tp07-seguridad.js
 ```
+
+Resultados de referencia (guardados en `docs/evidencias`): TP6 37 pass / 0 fail, persistencia 12 pass / 0 fail y TP7 (escenarios A a L) 33 pass / 0 fail. La corrida de TP7 completa reinicia contenedores; con `--sin-docker` se saltea esa parte.
 
 `INVENTORY_URL` tiene que apuntar al **líder** de Raft: si apunta a un follower, este redirige la escritura al líder y la redirección pierde el token (da 401). El líder cambia cuando se reinician nodos; para encontrarlo:
 
@@ -322,7 +340,20 @@ docker compose exec inventory-1 node scripts/race-demo.js --url http://localhost
 
 El script necesita dos tokens: `--token <jwt>` de ADMIN (se obtiene con `POST /auth/login`) para fijar el stock y `--service-token <jwt>` (rol SERVICE, el de `orders-service`) para reservar, porque reservar es una operación interna.
 
-##integrantes 
-Delfina Ibañez 
-Carolina Fetta
-Candela Aguilar
+## Integrantes
+
+| Integrante | Usuario de GitHub |
+|---|---|
+| Delfina Ibáñez | `delfinaibanez` |
+| Candela Aguilar |`candelaguilar` |
+| Carolina Fetta | `gcfetta` |
+
+La trazabilidad de quién hizo cada cambio está en la sección 10 de [`docs/TP5-analisis-y-diseno.md`](docs/TP5-analisis-y-diseno.md) y en el historial de Git (`git shortlog -sn --all`).
+
+## Forma de trabajo
+
+- `main` = estable, `develop` = integración.
+- Una rama `feature/<tarea>` por tarea, creada desde `develop`, con Pull Request hacia `develop`.
+- Cada integrante revisa el PR de otra persona, no el suyo.
+- Commits en español, cada una con su propia cuenta de GitHub.
+- Nunca se suben `.env`, `.env.docker`, `certs/`, `node_modules` ni logs.
